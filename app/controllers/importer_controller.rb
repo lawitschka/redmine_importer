@@ -51,7 +51,7 @@ class ImporterController < ApplicationController
     iip.col_sep = params[:splitter]
     iip.encoding = params[:encoding]
     iip.created = Time.new
-    iip.csv_data = params[:file].read
+  iip.csv_data = params[:file].read
     iip.save
 
     # Put the timestamp in the params to detect
@@ -230,9 +230,11 @@ class ImporterController < ApplicationController
       return
     end
 
-    FasterCSV.new(iip.csv_data, {:headers=>true, :encoding=>iip.encoding,
-        :quote_char=>iip.quote_char, :col_sep=>iip.col_sep}).each do |row|
+    # Parse CSV
+    opts = iip.attributes.symbolize_keys.slice(:quote_char, :col_sep, :encoding)
+    table = CSV.parse iip.csv_data, { headers: true }.merge(opts)
 
+    table.each do |row|
       project = Project.find_by_name(row[attrs_map["project"]])
       if !project
         project = @project
