@@ -25,15 +25,21 @@ end
 
 class ImporterController < ApplicationController
   unloadable
-  
+
   before_filter :find_project
 
   ISSUE_ATTRS = [:id, :subject, :assigned_to, :fixed_version,
     :author, :description, :category, :priority, :tracker, :status,
     :start_date, :due_date, :done_ratio, :estimated_hours,
     :parent_issue, :watchers ]
-  
+
   def index
+    @encoding_options = [
+      ImportEncoding.new('UTF8', 'U'),
+      ImportEncoding.new('EUC', 'EUC'),
+      ImportEncoding.new('SJIS', 'S'),
+      ImportEncoding.new('None', 'N')
+    ]
   end
 
   def match
@@ -47,31 +53,31 @@ class ImporterController < ApplicationController
     iip.created = Time.new
     iip.csv_data = params[:file].read
     iip.save
-    
+
     # Put the timestamp in the params to detect
     # users with two imports in progress
     @import_timestamp = iip.created.strftime("%Y-%m-%d %H:%M:%S")
     @original_filename = params[:file].original_filename
-    
+
     # display sample
     sample_count = 5
     i = 0
     @samples = []
-    
+
     FasterCSV.new(iip.csv_data, {:headers=>true,
     :encoding=>iip.encoding, :quote_char=>iip.quote_char, :col_sep=>iip.col_sep}).each do |row|
       @samples[i] = row
-     
+
       i += 1
       if i >= sample_count
         break
       end
     end # do
-    
+
     if @samples.size > 0
       @headers = @samples[0].headers
     end
-    
+
     # fields
     @attrs = Array.new
     ISSUE_ATTRS.each do |attr|
@@ -86,7 +92,7 @@ class ImporterController < ApplicationController
     end
     @attrs.sort!
   end
-  
+
   # Returns the issue object associated with the given value of the given attribute.
   # Raises NoIssueForUniqueValue if not found or MultipleIssuesForUniqueValue
   def issue_for_unique_attr(unique_attr, attr_value, row_data)
@@ -99,10 +105,10 @@ class ImporterController < ApplicationController
       query = Query.new(:name => "_importer", :project => @project)
       query.add_filter("status_id", "*", [1])
       query.add_filter(unique_attr, "=", [attr_value])
-      
+
       issues = Issue.find :all, :conditions => query.statement, :limit => 2, :include => [ :assigned_to, :status, :tracker, :project, :priority, :category, :fixed_version ]
     end
-    
+
     if issues.size > 1
       @failed_count += 1
       @failed_issues[@failed_count] = row_data
@@ -134,8 +140,8 @@ class ImporterController < ApplicationController
     user = user_for_login!(login)
     user ? user.id : nil
   end
-    
-  
+
+
   # Returns the id for the given version or raises RecordNotFound.
   # Implements a cache of version ids based on version name
   # If add_versions is true and a valid name is given,
@@ -157,7 +163,7 @@ class ImporterController < ApplicationController
     end
     @version_id_by_name[name]
   end
-  
+
   def result
     @handle_count = 0
     @update_count = 0
@@ -172,7 +178,7 @@ class ImporterController < ApplicationController
     @user_by_login = Hash.new
     # Cache of Version by name
     @version_id_by_name = Hash.new
-    
+
     # Retrieve saved import data
     iip = ImportInProgress.find_by_user_id(User.current.id)
     if iip == nil
@@ -185,7 +191,7 @@ class ImporterController < ApplicationController
           "This import cannot be completed"
       return
     end
-    
+
     default_tracker = params[:default_tracker]
     update_issue = params[:update_issue]
     unique_field = params[:unique_field].empty? ? nil : params[:unique_field]
@@ -197,7 +203,7 @@ class ImporterController < ApplicationController
     add_categories = params[:add_categories]
     add_versions = params[:add_versions]
     unique_attr = fields_map[unique_field]
-    unique_attr_checked = false  # Used to optimize some work that has to happen inside the loop   
+    unique_attr_checked = false  # Used to optimize some work that has to happen inside the loop
 
     # attrs_map is fields_map's invert
     attrs_map = fields_map.invert
@@ -221,7 +227,7 @@ class ImporterController < ApplicationController
       return
     end
 
-    FasterCSV.new(iip.csv_data, {:headers=>true, :encoding=>iip.encoding, 
+    FasterCSV.new(iip.csv_data, {:headers=>true, :encoding=>iip.encoding,
         :quote_char=>iip.quote_char, :col_sep=>iip.col_sep}).each do |row|
 
       project = Project.find_by_name(row[attrs_map["project"]])
@@ -273,13 +279,13 @@ class ImporterController < ApplicationController
       if update_issue
         begin
           issue = issue_for_unique_attr(unique_attr,row[unique_field],row)
-          
+
           # ignore other project's issue or not
           if issue.project_id != @project.id && !update_other_project
             @skip_count += 1
             next
           end
-          
+
           # ignore closed issue except reopen
           if issue.status.is_closed?
             if status == nil || status.is_closed?
@@ -287,14 +293,14 @@ class ImporterController < ApplicationController
               next
             end
           end
-          
+
           # init journal
           note = row[journal_field] || ''
-          journal = issue.init_journal(author || User.current, 
+          journal = issue.init_journal(author || User.current,
             note || '')
-            
+
           @update_count += 1
-          
+
         rescue NoIssueForUniqueValue
           if ignore_non_exist
             @skip_count += 1
@@ -305,7 +311,7 @@ class ImporterController < ApplicationController
             flash.append(:warning,"Could not update issue #{@failed_count} below, no match for the value #{row[unique_field]} were found")
             next
           end
-          
+
         rescue MultipleIssuesForUniqueValue
           @failed_count += 1
           @failed_issues[@failed_count] = row
@@ -313,7 +319,7 @@ class ImporterController < ApplicationController
           next
         end
       end
-    
+
       # project affect
       if project == nil
         project = Project.find_by_id(issue.project_id)
@@ -325,7 +331,7 @@ class ImporterController < ApplicationController
       issue.status_id = status != nil ? status.id : issue.status_id
       issue.priority_id = priority != nil ? priority.id : issue.priority_id
       issue.subject = row[attrs_map["subject"]] || issue.subject
-      
+
       # optional attributes
       issue.description = row[attrs_map["description"]] || issue.description
       issue.category_id = category != nil ? category.id : issue.category_id
@@ -383,7 +389,7 @@ class ImporterController < ApplicationController
         h
       end
       next if custom_failed_count > 0
-      
+
       # watchers
       watcher_failed_count = 0
       if watchers
@@ -421,7 +427,7 @@ class ImporterController < ApplicationController
         if unique_field
           @issue_by_unique_attr[row[unique_field]] = issue
         end
-        
+
         if send_emails
           if update_issue
             if Setting.notified_events.include?('issue_updated') && (!issue.current_journal.empty?)
@@ -459,21 +465,21 @@ class ImporterController < ApplicationController
         if journal
           journal
         end
-        
+
         @handle_count += 1
 
       end
-  
+
     end # do
-    
+
     if @failed_issues.size > 0
       @failed_issues = @failed_issues.sort
       @headers = @failed_issues[0][1].headers
     end
-    
+
     # Clean up after ourselves
     iip.delete
-    
+
     # Garbage prevention: clean up iips older than 3 days
     ImportInProgress.delete_all(["created < ?",Time.new - 3*24*60*60])
   end
@@ -483,5 +489,5 @@ private
   def find_project
     @project = Project.find(params[:project_id])
   end
-  
+
 end
