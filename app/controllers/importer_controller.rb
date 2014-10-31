@@ -64,8 +64,10 @@ class ImporterController < ApplicationController
     i = 0
     @samples = []
 
-    FasterCSV.new(iip.csv_data, {:headers=>true,
-    :encoding=>iip.encoding, :quote_char=>iip.quote_char, :col_sep=>iip.col_sep}).each do |row|
+    opts = iip.attributes.symbolize_keys.slice(:quote_char, :col_sep, :encoding)
+    table = CSV.parse iip.csv_data, { headers: true }.merge(opts)
+
+    table.each do |row|
       @samples[i] = row
 
       i += 1
@@ -136,6 +138,7 @@ class ImporterController < ApplicationController
       raise
     end
   end
+
   def user_id_for_login!(login)
     user = user_for_login!(login)
     user ? user.id : nil
