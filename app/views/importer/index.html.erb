@@ -8,7 +8,7 @@
 
 	<fieldset class="box"><legend><%= l(:label_upload_format) %></legend>
 		 <p><label><%=l(:label_upload_encoding)%></label>
-		<%= select_tag "encoding", options_from_collection_for_select(@encoding_options, :name, :value) %></p>
+		<%= select_tag "encoding", options_from_collection_for_select(@encoding_options, :value, :name) %></p>
 
 		<p><label><%=l(:label_upload_splitter)%></label>
 		<%= text_field_tag "splitter", ',', {:size => 3, :maxlength => 1}%></p>
